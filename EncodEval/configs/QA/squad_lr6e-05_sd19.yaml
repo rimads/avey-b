@@ -1,0 +1,52 @@
+eval_config:
+  (): encodeval.eval_tasks.EvalConfig
+  task_type: QA
+
+  model_class: !ext transformers.AutoModelForTokenClassification
+  model_kwargs:
+    pretrained_model_name_or_path: ${EVAL_MODEL_PATH}
+    num_labels: 2
+    trust_remote_code: true
+    attn_implementation: eager
+    dtype: !ext torch.bfloat16
+    device: cuda
+
+  tokenizer_class: !ext transformers.AutoTokenizer
+  tokenizer_kwargs:
+    pretrained_model_name_or_path: ${EVAL_MODEL_PATH}
+    trust_remote_code: true
+
+  tr_args_class: !ext transformers.TrainingArguments
+  tr_args_kwargs: 
+    output_dir: ./results/main 
+    output_subdir: lr6e-05_sd19
+    do_train: true
+    do_eval: true
+    do_predict: true
+    report_to: tensorboard
+    train_batch_size: 32
+    per_device_train_batch_size: 16
+    per_device_eval_batch_size: 16
+    learning_rate: 0.00006
+    lr_scheduler_type: linear
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    adam_epsilon: 0.00001
+    warmup_ratio: 0.1
+    weight_decay: 0.1
+    num_train_epochs: 4
+    seed: 19
+    logging_steps: 10   
+    fp16: false
+    bf16: true
+    #    callbacks:
+    #      - (): transformers.EarlyStoppingCallback
+    #        early_stopping_patience: 10
+    eval_strategy: "epoch"
+    eval_steps: 100
+    save_strategy: "no"
+    torch_compile: false
+    metric_for_best_model: loss
+
+  max_length:
+  load_dataset_from_custom_fn: !ext encodeval.datasets.squad

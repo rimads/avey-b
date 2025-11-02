@@ -1,0 +1,52 @@
+eval_config:
+  (): encodeval.eval_tasks.EvalConfig
+  task_type: IR
+
+  model_class: !ext sentence_transformers.SentenceTransformer
+  model_kwargs:
+    model_name_or_path: ${EVAL_MODEL_PATH}
+    trust_remote_code: true
+    dtype: !ext torch.bfloat16
+    device: cuda
+    model_kwargs:
+      attn_implementation: eager
+
+  tokenizer_class: !ext transformers.AutoTokenizer
+  tokenizer_kwargs:
+    pretrained_model_name_or_path: ${EVAL_MODEL_PATH}
+    trust_remote_code: true
+
+  tr_args_class: !ext sentence_transformers.training_args.SentenceTransformerTrainingArguments
+  tr_args_kwargs:
+    output_dir: ./results/main
+    output_subdir: lr1e-04_sd14
+    do_train: true
+    do_eval: false
+    do_predict: false
+    report_to: tensorboard
+    per_device_train_batch_size: 16 
+    learning_rate: 0.0001
+    lr_scheduler_type: linear
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    adam_epsilon: 0.00001
+    warmup_ratio: 0.1
+    weight_decay: 0.1
+    max_steps: 1000
+    # num_train_epochs: 1
+    seed: 14
+    logging_steps: 10
+    save_strategy: "no"
+    fp16: false
+    bf16: true
+    #    callbacks:
+    #      - (): transformers.EarlyStoppingCallback
+    #        early_stopping_patience: 10
+    torch_compile: false
+
+  loss_fn: !ext sentence_transformers.losses.CachedMultipleNegativesRankingLoss
+  loss_kwargs:
+    mini_batch_size: 256
+
+  max_length:
+  load_dataset_from_custom_fn: !ext encodeval.datasets.msmarco_pairs

@@ -1,0 +1,35 @@
+eval_config:
+  (): encodeval.eval_tasks.EvalConfig
+  task_type: IR
+
+  model_class: !ext sentence_transformers.SentenceTransformer
+  model_kwargs:
+    model_name_or_path: ${EVAL_MODEL_PATH}
+    ft_model_config_dir: msmarco_pairs/lr1e-04_sd10
+    trust_remote_code: true
+    dtype: !ext torch.bfloat16
+    device: cuda
+    model_kwargs:
+      attn_implementation: eager
+
+  tokenizer_class: !ext transformers.AutoTokenizer
+  tokenizer_kwargs:
+    pretrained_model_name_or_path: ${EVAL_MODEL_PATH}
+    trust_remote_code: true
+
+  tr_args_class: !ext sentence_transformers.training_args.SentenceTransformerTrainingArguments
+  tr_args_kwargs:
+    output_dir: ./results/main
+    output_subdir: ""
+    do_train: false
+    do_eval: true
+    do_predict: true
+    per_device_eval_batch_size: 4
+    fp16: false
+    bf16: true
+    #    callbacks:
+    #      - (): transformers.EarlyStoppingCallback
+    #        early_stopping_patience: 10
+
+  max_length:
+  load_dataset_from_custom_fn: !ext encodeval.datasets.mldr_en

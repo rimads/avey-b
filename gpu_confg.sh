@@ -1,0 +1,2 @@
+export NUMBER_OF_GPUS=8
+export BATCH_SIZE=16
