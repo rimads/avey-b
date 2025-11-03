@@ -41,6 +41,8 @@ fi
 
 source ~/miniconda3/bin/activate
 conda init --all >/dev/null 2>&1 || true
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 # -------------------------
 # Conda environments
