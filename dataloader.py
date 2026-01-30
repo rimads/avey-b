@@ -1,29 +1,29 @@
-from datasets import load_dataset
-import torch
 import os
 from typing import List
 
+import torch
+from datasets import load_dataset
+
 
 class DataLoader_MLM:
-    def __init__(self,
-                 B: int,
-                 T: int,
-                 process_rank: int,
-                 num_processes: int,
-                 tokenizer: str,
-                 **kwargs):
+    def __init__(
+        self,
+        B: int,
+        T: int,
+        process_rank: int,
+        num_processes: int,
+        tokenizer: str,
+        **kwargs,
+    ):
         self.B = B
         self.T = T
         self.process_rank = process_rank
         self.num_processes = num_processes
 
         dataset_name = "HuggingFaceFW/fineweb"
-        dataset_config = "sample-350BT"
+        dataset_config = "sample-10BT"  # sample-350BT for full pre-training
         self.dataset = load_dataset(
-            dataset_name,
-            name=dataset_config,
-            split="train",
-            num_proc=os.cpu_count()
+            dataset_name, name=dataset_config, split="train", num_proc=os.cpu_count()
         )
         self.dataset_length = len(self.dataset)
 
