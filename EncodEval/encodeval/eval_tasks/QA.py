@@ -13,17 +13,17 @@ class QuestionAnsweringEval(AbstractEval):
     def train(self) -> None:
         print("Tokenizing training dataset")
         train_dataset = self.dataset["train"].map(
-            self.tokenize, 
-            batched=True, 
-            load_from_cache_file=False, 
+            self.tokenize,
+            batched=True,
+            load_from_cache_file=False,
             remove_columns=self.dataset["train"].column_names,
         )
 
         if self.tr_args.eval_strategy != "no":
             val_dataset = self.dataset["validation"].map(
-                self.tokenize, 
-                batched=True, 
-                load_from_cache_file=False, 
+                self.tokenize,
+                batched=True,
+                load_from_cache_file=False,
                 remove_columns=self.dataset["validation"].column_names,
             )
         else:
@@ -39,7 +39,7 @@ class QuestionAnsweringEval(AbstractEval):
             model=self.model,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
-            tokenizer=self.tokenizer,
+            processing_class=self.tokenizer,
             data_collator=data_collator,
             callbacks=self.callbacks,
             args=self.tr_args,
@@ -62,13 +62,13 @@ class QuestionAnsweringEval(AbstractEval):
 
     def evaluate(self, split: str) -> Dict[str, Dict[str, Union[float, List[float]]]]:
         self.model.eval()
-        
+
         print(f"Tokenizing {split} dataset")
         eval_dataset = self.dataset[split]
         eval_dataset = eval_dataset.map(
             self.tokenize,
-            batched=True, 
-            load_from_cache_file=False, 
+            batched=True,
+            load_from_cache_file=False,
             remove_columns=eval_dataset.column_names,
         )
 
@@ -86,14 +86,20 @@ class QuestionAnsweringEval(AbstractEval):
                 batch = {k: v.to(self.device) for k, v in batch.items()}
                 output = self.model(**batch)
                 logits = output.logits.cpu()
-                preds = logits[0].argmax(2) if isinstance(logits, tuple) else logits.argmax(2)
+                preds = (
+                    logits[0].argmax(2)
+                    if isinstance(logits, tuple)
+                    else logits.argmax(2)
+                )
                 predictions += preds.tolist()
                 labels += batch["labels"].cpu().tolist()
 
-        sanitized_predictions_labels = self.sanitize_predictions_labels(predictions, labels)
+        sanitized_predictions_labels = self.sanitize_predictions_labels(
+            predictions, labels
+        )
         f1s = self.compute_f1s(**sanitized_predictions_labels)
         return {
-            # **sanitized_predictions_labels, 
+            # **sanitized_predictions_labels,
             **f1s,
         }
 
@@ -114,12 +120,12 @@ class QuestionAnsweringEval(AbstractEval):
 
         for i, offset in enumerate(offset_mapping):
             answer = answers[i]
-            
+
             if len(answer["text"]) == 0:
                 start_positions.append(0)
                 end_positions.append(0)
                 continue
-            
+
             start_char = answer["answer_start"][0]
             end_char = answer["answer_start"][0] + len(answer["text"][0])
             sequence_ids = inputs.sequence_ids(i)
@@ -132,7 +138,10 @@ class QuestionAnsweringEval(AbstractEval):
                 idx += 1
             context_end = idx - 1
 
-            if offset[context_start][0] > end_char or offset[context_end][1] < start_char:
+            if (
+                offset[context_start][0] > end_char
+                or offset[context_end][1] < start_char
+            ):
                 start_positions.append(0)
                 end_positions.append(0)
             else:
@@ -147,20 +156,28 @@ class QuestionAnsweringEval(AbstractEval):
                 end_positions.append(idx + 1)
 
         labels = []
-        for input_ids, start_pos, end_pos in zip(inputs["input_ids"], start_positions, end_positions):
+        for input_ids, start_pos, end_pos in zip(
+            inputs["input_ids"], start_positions, end_positions
+        ):
             if start_pos == 0 and end_pos == 0:
                 labels.append([0] * len(input_ids))
             else:
-                labels.append([0] * start_pos + [1] * (end_pos - start_pos + 1) + [0] * (len(input_ids) - end_pos - 1))
+                labels.append(
+                    [0] * start_pos
+                    + [1] * (end_pos - start_pos + 1)
+                    + [0] * (len(input_ids) - end_pos - 1)
+                )
             inputs["labels"] = labels
-        
+
         return inputs
-    
+
     def sanitize_predictions_labels(self, predictions, labels):
         sanitized_predictions, sanitized_labels = [], []
 
         for preds, labs in zip(predictions, labels):
-            sanitized_predictions.append([i for i, pred in enumerate(preds) if pred == 1])
+            sanitized_predictions.append(
+                [i for i, pred in enumerate(preds) if pred == 1]
+            )
             sanitized_labels.append([i for i, lab in enumerate(labs) if lab == 1])
 
         return {
@@ -174,7 +191,9 @@ class QuestionAnsweringEval(AbstractEval):
         precisions_i = [len(p & t) / len(p) for p, t in zip(pred, true)]
         recalls_i = [len(p & t) / len(t) for p, t in zip(pred, true)]
         f1s_i = [
-            2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0
+            2 * (precision * recall) / (precision + recall)
+            if precision + recall > 0
+            else 0
             for precision, recall in zip(precisions_i, recalls_i)
         ]
         f1_avg = np.mean(f1s_i)

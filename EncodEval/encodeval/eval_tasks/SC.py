@@ -12,21 +12,33 @@ from .abstract_eval import AbstractEval
 class SequenceClassificationEval(AbstractEval):
     def train(self) -> None:
         print("Tokenizing training dataset")
-        train_dataset = self.dataset["train"].map(self.tokenize, batched=True, load_from_cache_file=False)        
+        train_dataset = self.dataset["train"].map(
+            self.tokenize, batched=True, load_from_cache_file=False
+        )
         train_dataset = train_dataset.remove_columns(
-            [f for f in train_dataset.features if f not in ["input_ids", "attention_mask", "label"]]
+            [
+                f
+                for f in train_dataset.features
+                if f not in ["input_ids", "attention_mask", "label"]
+            ]
         )
 
         if self.tr_args.eval_strategy != "no":
-            val_dataset = self.dataset["validation"].map(self.tokenize, batched=True, load_from_cache_file=False)
+            val_dataset = self.dataset["validation"].map(
+                self.tokenize, batched=True, load_from_cache_file=False
+            )
             val_dataset = val_dataset.remove_columns(
-                [f for f in val_dataset.features if f not in ["input_ids", "attention_mask", "label"]]
+                [
+                    f
+                    for f in val_dataset.features
+                    if f not in ["input_ids", "attention_mask", "label"]
+                ]
             )
         else:
             val_dataset = None
 
         data_collator = DataCollatorWithPadding(self.tokenizer, padding=True)
-        
+
         print("==== Training Arguments ====")
         print(self.tr_args)
         print("=============================")
@@ -35,7 +47,7 @@ class SequenceClassificationEval(AbstractEval):
             model=self.model,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
-            tokenizer=self.tokenizer,
+            processing_class=self.tokenizer,
             data_collator=data_collator,
             callbacks=self.callbacks,
             args=self.tr_args,
@@ -58,11 +70,17 @@ class SequenceClassificationEval(AbstractEval):
 
     def evaluate(self, split: str) -> Dict[str, Dict[str, Union[float, List[float]]]]:
         self.model.eval()
-        
+
         print(f"Tokenizing {split} dataset")
-        eval_dataset = self.dataset[split].map(self.tokenize, batched=True, load_from_cache_file=False)
+        eval_dataset = self.dataset[split].map(
+            self.tokenize, batched=True, load_from_cache_file=False
+        )
         eval_dataset = eval_dataset.remove_columns(
-            [f for f in eval_dataset.features if f not in ["input_ids", "attention_mask", "label"]]
+            [
+                f
+                for f in eval_dataset.features
+                if f not in ["input_ids", "attention_mask", "label"]
+            ]
         )
 
         data_collator = DataCollatorWithPadding(self.tokenizer, padding=True)
@@ -86,7 +104,7 @@ class SequenceClassificationEval(AbstractEval):
             predictions = [np.argmax(pred).item() for pred in predictions]
 
         accuracies = self.compute_accuracies(predictions, eval_dataset["label"])
-        
+
         return {
             # "pred": predictions,
             # "true": eval_dataset["label"],
@@ -100,7 +118,7 @@ class SequenceClassificationEval(AbstractEval):
             max_length=self.max_length,
             add_special_tokens=False,
         )
-    
+
     def compute_accuracies(self, pred, true):
         accuracies_i = [(p == t) * 1 for p, t in zip(pred, true)]
         accuracy_avg = np.mean(accuracies_i)
