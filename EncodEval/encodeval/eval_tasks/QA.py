@@ -1,5 +1,6 @@
 from typing import Dict, List, Union
 
+import multiprocess
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
@@ -11,12 +12,14 @@ from .abstract_eval import AbstractEval
 
 class QuestionAnsweringEval(AbstractEval):
     def train(self) -> None:
+        multiprocess.set_start_method("spawn")
         print("Tokenizing training dataset")
         train_dataset = self.dataset["train"].map(
             self.tokenize,
             batched=True,
             load_from_cache_file=False,
             remove_columns=self.dataset["train"].column_names,
+            num_proc=4,
         )
 
         if self.tr_args.eval_strategy != "no":
@@ -25,6 +28,7 @@ class QuestionAnsweringEval(AbstractEval):
                 batched=True,
                 load_from_cache_file=False,
                 remove_columns=self.dataset["validation"].column_names,
+                num_proc=4,
             )
         else:
             val_dataset = None
@@ -39,7 +43,7 @@ class QuestionAnsweringEval(AbstractEval):
             model=self.model,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
-            processing_class=self.tokenizer,
+            tokenizer=self.tokenizer,
             data_collator=data_collator,
             callbacks=self.callbacks,
             args=self.tr_args,

@@ -1,0 +1,38 @@
+[project]
+name = "avey-b1"
+version = "1.0"
+authors = [
+  { name = "Devang Acharya", email = "dacharya@avey.ai" },
+  { name = "Mohammad Hammoud", email = "mhh@avey.ai" },
+]
+description = "A bi-directional encoder implementation of the Avey architecture."
+readme = "README.md"
+requires-python = ">=3.11.0"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "accelerate==1.9.0",
+  "configue==5.0.0",
+  "datasets==2.15.0",
+  "fire==0.7.0",
+  "numpy==1.26.3",
+  "pandas==2.2.3",
+  "protobuf==6.30.1",
+  "sentence-transformers==3.4.1",
+  "sentencepiece==0.2.0",
+  "torch==2.9",
+  "transformers==4.50",
+  "torchao",
+  "torchtune",
+  "wandb",
+  "boto3",
+  "adjustText",
+  "tensorboard",
+  "xformers"
+]
+
+[project.urls]
+Homepage = "https://github.com/rimads/avey-b"
+Issues = "https://github.com/rimads/avey-b/issues"

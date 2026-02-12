@@ -55,55 +55,9 @@ fi
 # -------------------------
 # Unified Environment Setup
 # -------------------------
-VENV_DIR="$HOME/venvs/main"
-mkdir -p "$(dirname "$VENV_DIR")"
-
-if [ ! -d "$VENV_DIR" ]; then
-    echo "[*] Creating unified environment (Python 3.11)..."
-    uv venv "$VENV_DIR" --python 3.11
-else
-    echo "[✓] Environment already exists."
-fi
-
-# Check if a core library is installed to verify state
-if ! "$VENV_DIR/bin/python" -c "import torch" &>/dev/null; then
-    echo "[*] Installing all dependencies (Train + Eval)..."
-
-    source "$VENV_DIR/bin/activate"
-
-    # Installing all packages in one go allows uv to resolve
-    # compatible versions for everything simultaneously.
-    uv pip install --upgrade \
-        torch torchvision torchaudio torchao torchtune \
-        transformers datasets wandb boto3 accelerate \
-        configue fire numpy pandas protobuf \
-        sentence-transformers sentencepiece tensorboard \
-        tiktoken adjustText
-else
-    echo "[✓] Dependencies already installed."
-fi
-
-# -------------------------
-# Eval Tokenizer Setup
-# -------------------------
-# to ensure the tokenizer repo is present if the folder exists.
-if [ -d "EncodEval" ]; then
-    echo "[*] Checking EncodEval auxiliary files..."
-    (
-        cd EncodEval
-        if [ ! -d avey1-tokenizer-base ]; then
-            echo "[*] Cloning tokenizer repo..."
-            git clone https://huggingface.co/avey-ai/avey1-tokenizer-base
-        else
-            echo "[✓] Tokenizer repo already cloned."
-        fi
-    )
-else
-    echo "[!] Note: 'EncodEval' directory not found in $(pwd). Skipping tokenizer clone."
-fi
+uv sync .
+source .venv/bin/activate
 
 echo "------------------------------------------------"
 echo "[✓] Setup complete."
-echo "Activate the environment with:"
-echo "    source $VENV_DIR/bin/activate"
 echo "------------------------------------------------"
