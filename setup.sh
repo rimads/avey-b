@@ -55,7 +55,7 @@ fi
 # -------------------------
 # Unified Environment Setup
 # -------------------------
-uv sync .
+uv sync
 source .venv/bin/activate
 
 echo "------------------------------------------------"
