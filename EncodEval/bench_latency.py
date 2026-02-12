@@ -2,6 +2,7 @@ import csv
 import importlib
 import os
 import time
+import traceback
 
 import matplotlib.pyplot as plt
 import torch
@@ -40,28 +41,6 @@ def is_neobert_model(model):
 
 def benchmark_model(model_name, max_len):
     print(f"\nBenchmarking {model_name}...")
-
-    if "avey" in model_name:
-        config_import = importlib.import_module(f"{model_name}.configuration_avey")
-        model_import = importlib.import_module(f"{model_name}.modeling_avey")
-        AveyConfig = config_import.AveyConfig
-        AveyModel = model_import.AveyModel
-
-        config = AveyConfig.from_pretrained(model_name)
-        archs = getattr(config, "architectures", [])
-        is_mlm = any("MaskedLM" in a for a in archs)
-        if is_mlm:
-            print("saving avey model from masked LM...")
-            AveyForMaskedLM = model_import.AveyForMaskedLM
-            model = AveyForMaskedLM.from_pretrained(
-                model_name, torch_dtype=torch.bfloat16
-            )
-            model = model.base_avey_model
-            model.save_pretrained(model_name)
-
-        AutoConfig.register("avey", AveyConfig)
-        AutoModel.register(AveyConfig, AveyModel)
-
     model = AutoModel.from_pretrained(
         model_name, trust_remote_code=True, torch_dtype=torch.bfloat16
     ).to(DEVICE)
@@ -176,8 +155,12 @@ def main():
     results = {}
 
     for model_name, max_len in MODEL_NAMES:
-        input_sizes, times = benchmark_model(model_name, max_len)
-        results[model_name] = (input_sizes, times)
+        try:
+            input_sizes, times = benchmark_model(model_name, max_len)
+            results[model_name] = (input_sizes, times)
+        except Exception as e:
+            print(f"Error benchmarking {model_name}: {e}")
+            traceback.print_exc()
 
     if torch.cuda.is_available():
         gpu_name = torch.cuda.get_device_name(0)
