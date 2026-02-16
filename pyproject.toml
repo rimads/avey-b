@@ -24,7 +24,6 @@ dependencies = [
   "sentencepiece==0.2.0",
   "torch==2.9",
   "transformers==4.50",
-  "protobuf==5.29.3",
   "torchao==0.16.0",
   "torchtune==0.6.1",
   "wandb==0.25.0",
