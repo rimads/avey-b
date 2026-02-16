@@ -62,7 +62,7 @@ class EvalConfig:
         ft_model_config_dir = self.model_kwargs.pop("ft_model_config_dir", None)
         if ft_model_config_dir is not None:
             ft_model_path = (
-                f"output_dir/fine-tuned/{self.task_type}/{ft_model_config_dir}"
+                f"{output_dir}/fine-tuned/{self.task_type}/{ft_model_config_dir}"
             )
             print(f"Loading fine-tuned model at {ft_model_path}")
             if "pretrained_model_name_or_path" in self.model_kwargs:
