@@ -1,15 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import (
     BaseModelOutput,
     MaskedLMOutput,
     SequenceClassifierOutput,
-    TokenClassifierOutput
+    TokenClassifierOutput,
 )
+
 from .configuration_avey import AveyConfig
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 
 class Contextualizer(nn.Module):
@@ -18,11 +19,13 @@ class Contextualizer(nn.Module):
         self.eps = config.eps
         self.layer_idx = layer_idx
         if self.layer_idx % 2 == 0:
-            self.spatial_proj = nn.Parameter(torch.empty(config.chunk_size, config.chunk_size))
+            self.spatial_proj = nn.Parameter(
+                torch.empty(config.chunk_size, config.chunk_size)
+            )
             nn.init.xavier_normal_(self.spatial_proj)
 
     def cosim(self, embeddings: torch.Tensor) -> torch.Tensor:
-        norm = torch.sqrt(torch.sum(embeddings ** 2, dim=-1, keepdim=True) + self.eps)
+        norm = torch.sqrt(torch.sum(embeddings**2, dim=-1, keepdim=True) + self.eps)
         normalized = embeddings / norm
         cosim = torch.matmul(normalized, normalized.transpose(-1, -2))
         return cosim
@@ -47,7 +50,7 @@ class ContextualizerLayer(nn.Module):
         expanded_dim = config.d_embed * config.expansion_factor
         self.split_factor = [
             int(expanded_dim * config.context_proportion),
-            int(expanded_dim * (1-config.context_proportion))
+            int(expanded_dim * (1 - config.context_proportion)),
         ]
         diff = expanded_dim - (self.split_factor[0] + self.split_factor[1])
         self.split_factor[1] += diff
@@ -108,7 +111,7 @@ class Ranker(nn.Module):
         for i in range(0, N):
             cur = x_chunks[:, i]
             others = x_chunks[:, :i]
-            cat = self._extend(others, cur)      # (B, ≤k⋅cs+cs, E)
+            cat = self._extend(others, cur)  # (B, ≤k⋅cs+cs, E)
 
             # pad or truncate to length L
             cur_len = cat.size(1)
@@ -120,7 +123,7 @@ class Ranker(nn.Module):
 
             extended.append(cat)
 
-        ext = torch.stack(extended, dim=1)     # (B, N, L, E)
+        ext = torch.stack(extended, dim=1)  # (B, N, L, E)
         ext = (self.down_proj @ ext) + x_chunks
         h = ext.view(B * N, cs, E)
 
@@ -163,28 +166,28 @@ class Ranker(nn.Module):
         cm = cur_chunk / (cur_chunk.norm(dim=-1, keepdim=True) + self.eps)
 
         # cosine sim
-        cm_e = cm.unsqueeze(1)                  # (B, 1, cs, E)
-        ct = cn.transpose(-1, -2)             # (B, i, E, cs)
-        sims = torch.matmul(cm_e, ct)           # (B, i, cs, cs)
-        mx, _ = sims.max(dim=-1)              # (B, i, cs)
-        scores = mx.sum(dim=-1)                # (B, i)
+        cm_e = cm.unsqueeze(1)  # (B, 1, cs, E)
+        ct = cn.transpose(-1, -2)  # (B, i, E, cs)
+        sims = torch.matmul(cm_e, ct)  # (B, i, cs, cs)
+        mx, _ = sims.max(dim=-1)  # (B, i, cs)
+        scores = mx.sum(dim=-1)  # (B, i)
 
         # topk
         topk_vals, topk_idx = scores.topk(num_sel, dim=1)
 
         # normalize weights
         v_min = topk_vals.min(dim=-1, keepdim=True)[0]  # (B, 1)
-        w = topk_vals / (v_min + self.eps)              # (B, num_sel)
-        w = w.unsqueeze(-1).unsqueeze(-1)               # (B, num_sel, 1, 1)
+        w = topk_vals / (v_min + self.eps)  # (B, num_sel)
+        w = w.unsqueeze(-1).unsqueeze(-1)  # (B, num_sel, 1, 1)
 
         # gather
         idx_e = topk_idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, cs, E)
-        sel = other_chunks.gather(1, idx_e)              # (B, num_sel, cs, E)
+        sel = other_chunks.gather(1, idx_e)  # (B, num_sel, cs, E)
 
         # weight & flatten
         wt = (sel * w).reshape(B, num_sel * cs, E)
 
-        return torch.cat([wt, cur_chunk], dim=1)        # (B, ≤k⋅cs+cs, E)
+        return torch.cat([wt, cur_chunk], dim=1)  # (B, ≤k⋅cs+cs, E)
 
 
 class AveyPreTrainedModel(PreTrainedModel):
@@ -209,7 +212,9 @@ class AveyModel(AveyPreTrainedModel):
         super().__init__(config)
         self.config = config
         self.embeddings = nn.Embedding(config.vocab_size, config.d_embed)
-        self.layers = nn.ModuleList([AveyLayer(config, i) for i in range(config.n_layers)])
+        self.layers = nn.ModuleList(
+            [AveyLayer(config, i) for i in range(config.n_layers)]
+        )
         self.ranker = Ranker(config)
         self.post_init()
 
@@ -223,8 +228,7 @@ class AveyModel(AveyPreTrainedModel):
         orig_T = T
         if T % self.config.chunk_size != 0:
             pad_len = self.config.chunk_size - (T % self.config.chunk_size)
-            pad_tensor = torch.zeros(
-                B, pad_len, E, device=h.device, dtype=h.dtype)
+            pad_tensor = torch.zeros(B, pad_len, E, device=h.device, dtype=h.dtype)
             h = torch.cat([h, pad_tensor], dim=1)
             T = h.shape[1]
             padded = True
@@ -255,7 +259,9 @@ class AveyForMaskedLM(AveyPreTrainedModel):
         logits = F.linear(self.ln_f(h), self.base_avey_model.embeddings.weight)
 
         if labels is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1), ignore_index=-100)
+            loss = F.cross_entropy(
+                logits.view(-1, logits.size(-1)), labels.view(-1), ignore_index=-100
+            )
             return MaskedLMOutput(logits=logits, loss=loss)
 
         return MaskedLMOutput(logits=logits)
@@ -274,11 +280,11 @@ class AveyForSequenceClassification(AveyPreTrainedModel):
 
         self.classifier = nn.Linear(config.d_embed, config.num_labels)
         self.dense = nn.Sequential(
-            nn.Linear(self.config.d_embed, self.config.d_embed*2),
+            nn.Linear(self.config.d_embed, self.config.d_embed * 2),
             nn.GELU(),
-            nn.Linear(self.config.d_embed*2, self.config.d_embed*2),
+            nn.Linear(self.config.d_embed * 2, self.config.d_embed * 2),
             nn.GELU(),
-            nn.Linear(self.config.d_embed*2, self.config.d_embed)
+            nn.Linear(self.config.d_embed * 2, self.config.d_embed),
         )
         self.post_init()
 
@@ -295,7 +301,9 @@ class AveyForSequenceClassification(AveyPreTrainedModel):
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                elif self.num_labels > 1 and (
+                    labels.dtype == torch.long or labels.dtype == torch.int
+                ):
                     self.config.problem_type = "single_label_classification"
                 else:
                     self.config.problem_type = "multi_label_classification"
@@ -325,14 +333,13 @@ class AveyForSequenceClassification(AveyPreTrainedModel):
         is_mlm = any("MaskedLM" in a for a in archs)
 
         if is_mlm:
-            mlm_model = AveyForMaskedLM.from_pretrained(pretrained_model_name_or_path,  **kwargs)
+            mlm_model = AveyForMaskedLM.from_pretrained(
+                pretrained_model_name_or_path, **kwargs
+            )
             return cls(config, avey_model=mlm_model)
         else:
             return super().from_pretrained(
-                pretrained_model_name_or_path,
-                *model_args,
-                config=config,
-                **kwargs
+                pretrained_model_name_or_path, *model_args, config=config, **kwargs
             )
 
 
@@ -348,10 +355,7 @@ class AveyForTokenClassification(AveyPreTrainedModel):
             self.avey_model = avey_model
 
         self.classifier = nn.Linear(config.d_embed, config.num_labels)
-        self.dense = nn.Sequential(
-            nn.Linear(config.d_embed, config.d_embed),
-            nn.Tanh()
-        )
+        self.dense = nn.Sequential(nn.Linear(config.d_embed, config.d_embed), nn.Tanh())
         self.post_init()
 
     def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, **kwargs):
@@ -379,12 +383,11 @@ class AveyForTokenClassification(AveyPreTrainedModel):
         is_mlm = any("MaskedLM" in a for a in archs)
 
         if is_mlm:
-            mlm_model = AveyForMaskedLM.from_pretrained(pretrained_model_name_or_path,  **kwargs)
+            mlm_model = AveyForMaskedLM.from_pretrained(
+                pretrained_model_name_or_path, **kwargs
+            )
             return cls(config, avey_model=mlm_model)
         else:
             return super().from_pretrained(
-                pretrained_model_name_or_path,
-                *model_args,
-                config=config,
-                **kwargs
+                pretrained_model_name_or_path, *model_args, config=config, **kwargs
             )

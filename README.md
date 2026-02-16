@@ -10,13 +10,9 @@ This repository contains the implementation of Avey-B, code for pretraining, run
 - `bench_throughput.py`: code for benchmarking model throughput
 - `neobert`: contains `NeoBERTForTokenClassification` impementation for TC and QA benchmarks
 
-TODO: fork neobert on HF?
-
 ## Setup
 
 `setup.sh` sets up a new VM or container instance running Ubuntu (to be run as root). Feel free to adjust the script as needed. It will update the system, install awscli (for s3 backups if needed), uv, other necessary and useful packages, and initialize a python environment for running the code (with uv sync). To activate the created environment, run `source .venv/bin/activate`.
-
-TODO: make script distro agnostic?
 
 ## Pre-training
 
@@ -26,26 +22,15 @@ TODO: make script distro agnostic?
 source gpu_config.sh
 ```
 
-- run training with torch DDP (`train_mlm.py` implements pre-training for base model by default)
+- run training with torch DDP (`train_mlm.py` implements pre-training for the base model by default)
 
 ```bash
 sh train.sh
 ```
 
-TODO: make train.sh automatically adapt to the number of GPUs?
-
 ## Evaluation
 
 `EncodEval` is modified from [here](https://github.com/hgissbkh/EncodEval/tree/MLM_vs_CLM). To run evals, specify models inside `EncodEval/run.py` under `model_name` (supports huggingface compatible models such as `google-bert/bert-base-uncased`), and run `run.py` from inside `EncodEval`.
-
-TODO: move config params for run.py to the top?
-TODO: add explanation for run.py
-
-For Avey-B:
-
-- Download checkpoint to `./avey`
-
-TODO: make sure it runs from HF repo.
 
 ## Figures
 

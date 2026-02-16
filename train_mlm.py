@@ -240,7 +240,7 @@ def main():
         model = AveyForMaskedLM.from_pretrained(pretrained_path)
     else:
         config = AveyConfig(
-            vocab_size=50304,
+            vocab_size=50368,
             context_len=4_294_967_296,
             d_embed=768,
             n_layers=30,
