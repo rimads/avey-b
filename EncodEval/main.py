@@ -1,66 +1,31 @@
+import importlib
 import json
 import os
 import subprocess
-import importlib
 
 import configue
 import fire
-
 from encodeval.eval_tasks import (
     EvalConfig,
-    RetrievalEval,
     QuestionAnsweringEval,
+    RetrievalEval,
     SequenceClassificationEval,
     TokenClassificationEval,
 )
 from transformers import (
+    AutoConfig,
     AutoModel,
     AutoModelForMaskedLM,
     AutoModelForSequenceClassification,
-    AutoConfig,
-    AutoModelForTokenClassification
+    AutoModelForTokenClassification,
 )
 
 
 def main(config_file: str = None, model_path: str = None):
-    if "avey" in model_path:
-        config_import = importlib.import_module(
-            f"{os.getenv('EVAL_MODEL')}.configuration_avey"
-        )
-        model_import = importlib.import_module(
-            f"{os.getenv('EVAL_MODEL')}.modeling_avey"
-        )
-        AveyConfig = config_import.AveyConfig
-        AveyForMaskedLM = model_import.AveyForMaskedLM
-        AveyForSequenceClassification = model_import.AveyForSequenceClassification
-        AveyForTokenClassification = model_import.AveyForTokenClassification
-        AveyModel = model_import.AveyModel
-
-        AutoConfig.register("avey", AveyConfig)
-        AutoModel.register(AveyConfig, AveyModel)
-        AutoModelForMaskedLM.register(AveyConfig, AveyForMaskedLM)
-        AutoModelForSequenceClassification.register(
-            AveyConfig, AveyForSequenceClassification
-        )
-        AutoModelForTokenClassification.register(
-            AveyConfig, AveyForTokenClassification
-        )
-    elif "tpp" in model_path:
-        from tpp.configuration_tpp import TPPConfig
-        from tpp.modeling_tpp import TPPForMaskedLM, TPPForSequenceClassification, TPPForTokenClassification, TPPModel
-        AutoConfig.register("tpp", TPPConfig)
-        AutoModel.register(TPPConfig, TPPModel)
-        AutoModelForMaskedLM.register(TPPConfig, TPPForMaskedLM)
-        AutoModelForSequenceClassification.register(
-            TPPConfig, TPPForSequenceClassification)
-        AutoModelForTokenClassification.register(
-            TPPConfig, TPPForTokenClassification)
-
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     os.environ["EVAL_MODEL_PATH"] = model_path
     print(f"Evaluating model at path: {model_path}")
-    eval_config: EvalConfig = configue.load(
-        config_file, sub_path="eval_config")
+    eval_config: EvalConfig = configue.load(config_file, sub_path="eval_config")
 
     # Determine the evaluator based on task type
     if eval_config.task_type == "IR":
@@ -85,7 +50,10 @@ def main(config_file: str = None, model_path: str = None):
     else:
         # Run training if needed
         if eval_config.tr_args.do_train:
-            if os.path.exists(eval_config.tr_args.output_dir) and len(os.listdir(eval_config.tr_args.output_dir)) > 0:
+            if (
+                os.path.exists(eval_config.tr_args.output_dir)
+                and len(os.listdir(eval_config.tr_args.output_dir)) > 0
+            ):
                 print(
                     "A fine-tuned model already exists for this configuration at "
                     f"{eval_config.tr_args.output_dir}, skipping training"

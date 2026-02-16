@@ -1,18 +1,22 @@
 # Avey-B
 
-This repository contains the implementation of Avey-B, code for pretraining, running benchmarks, and making plots found in the [Avey-B paper](placeholder). The pre-trained checkpoints of Avey-B trained as a part of this paper can be found on [HuggingFace](placeholder).
+This repository contains the implementation of Avey-B, code for pretraining, running benchmarks, and generating the plots found in the [Avey-B paper](placeholder). Pre-trained checkpoints of Avey-B are available on HuggingFace, and can be found [here](placeholder). All of the available code was tested on instances running Ubuntu 22.04 with NVIDIA A100. The python environment is managed by uv, and all dependencies are pinned in `pyproject.toml` for reproducibility.
 
 ## Structure
 
 - `avey_b`: implementation of the Avey-B model
-- `EncodEval`: All evaluation code
+- `EncodEval`: code to run evaluations
 - `bench_latency.py`: code for benchmarking model latency
 - `bench_throughput.py`: code for benchmarking model throughput
 - `neobert`: contains `NeoBERTForTokenClassification` impementation for TC and QA benchmarks
 
+TODO: fork neobert on HF?
+
 ## Setup
 
-`setup.sh` sets up a new VM or container instance running Ubuntu (to be run as root), adjust as needed. Installs awscli (for s3 backups if needed), miniconda, and two conda envs (one each for training and eval).
+`setup.sh` sets up a new VM or container instance running Ubuntu (to be run as root). Feel free to adjust the script as needed. It will update the system, install awscli (for s3 backups if needed), uv, other necessary and useful packages, and initialize a python environment for running the code (with uv sync). To activate the created environment, run `source .venv/bin/activate`.
+
+TODO: make script distro agnostic?
 
 ## Pre-training
 
@@ -28,19 +32,20 @@ source gpu_config.sh
 sh train.sh
 ```
 
+TODO: make train.sh automatically adapt to the number of GPUs?
+
 ## Evaluation
 
-`EncodEval` is modified from [here](https://github.com/hgissbkh/EncodEval/tree/MLM_vs_CLM). To run evals, specify models inside `EncodEval/run.py` under `model_name` and `ir_model_name` (supports huggingface compatible models such as `google-bert/bert-base-uncased`), and run `run.py` from inside `EncodEval`.
+`EncodEval` is modified from [here](https://github.com/hgissbkh/EncodEval/tree/MLM_vs_CLM). To run evals, specify models inside `EncodEval/run.py` under `model_name` (supports huggingface compatible models such as `google-bert/bert-base-uncased`), and run `run.py` from inside `EncodEval`.
+
+TODO: move config params for run.py to the top?
+TODO: add explanation for run.py
 
 For Avey-B:
 
 - Download checkpoint to `./avey`
-- Generate base model for Sentence Transformers for IR benchmarks:
 
-```bash
-cp -r avey avey-model
-python save_avey_model.py
-```
+TODO: make sure it runs from HF repo.
 
 ## Figures
 

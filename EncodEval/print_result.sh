@@ -1,26 +1,27 @@
 #!/bin/bash
 
 # Model name
-MODEL="avey"
+MODEL="avey-b1-base-exp"
 
 benchmarks=(
-  "./results/main/results/${MODEL}/SC/mnli_m"
-  "./results/main/results/${MODEL}/SC/qqp"
-  "./results/main/results/${MODEL}/SC/sst2"
-  "./results/main/results/${MODEL}/TC/conll2003_en"
-  "./results/main/results/${MODEL}/TC/ontonotes"
-  "./results/main/results/${MODEL}/TC/uner_en"
-  "./results/main/results/${MODEL}/QA/record"
-  "./results/main/results/${MODEL}/QA/squad"
-  "./results/main/results/${MODEL}/QA/squad_v2"
-  "./results/main/results/${MODEL}/IR/mldr_en/msmarco_pairs"
-  "./results/main/results/${MODEL}/IR/msmarco/msmarco_pairs"
-  "./results/main/results/${MODEL}/IR/nq/msmarco_pairs"
-  "./results/main/results/${MODEL}/QA/niah1"
-  "./results/main/results/${MODEL}/QA/niah2"
+  "./${MODEL}/results/SC/mnli_m"
+  "./${MODEL}/results/SC/qqp"
+  "./${MODEL}/results/SC/sst2"
+  "./${MODEL}/results/TC/conll2003_en"
+  "./${MODEL}/results/TC/ontonotes"
+  "./${MODEL}/results/TC/uner_en"
+  "./${MODEL}/results/QA/record"
+  "./${MODEL}/results/QA/squad"
+  "./${MODEL}/results/QA/squad_v2"
+  "./${MODEL}/results/IR/mldr_en/msmarco_pairs"
+  "./${MODEL}/results/IR/msmarco/msmarco_pairs"
+  "./${MODEL}/results/IR/nq/msmarco_pairs"
+  "./${MODEL}/results/QA/niah1"
+  "./${MODEL}/results/QA/niah2"
 )
 
-lrs=("2e-05" "6e-05" "1e-04" "5e-04")
+# lrs=("2e-05" "6e-05" "1e-04" "5e-04")
+lrs=("5e-04")
 
 for lr in "${lrs[@]}"; do
   echo "### Learning rate: $lr"

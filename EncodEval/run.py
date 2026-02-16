@@ -3,6 +3,40 @@ import subprocess
 import time
 from queue import Queue
 
+# model to benchmark
+model_name = "avey-ai/avey-b1-base-exp"
+
+# learning rates to run, a yaml for each learning rate under configs/ must exist
+LRs = [
+    # "2e-05",
+    # "6e-05",
+    # "1e-04",
+    "5e-04",
+    # "1e-03",
+    # "2e-03",
+]
+
+tasks = [
+    # "IR/msmarco_pairs",
+    # "QA/squad_v2",
+    # "QA/squad",
+    # "QA/record",
+    "SC/mnli_m",
+    # "SC/sst2",
+    # "SC/qqp",
+    # "TC/conll2003_en",
+    # "TC/ontonotes",
+    # "TC/uner_en",
+    # "IR/mldr_en_msmarco_pairs",
+    # "IR/msmarco_msmarco_pairs",
+    # "IR/nq_msmarco_pairs",
+    # "LC/niah1",
+    # "LC/niah2",
+]
+
+# number of seeds to run for each task (starting from 0, up to num_seeds-1)
+num_seeds = 5
+
 CHECK_INTERVAL = 5  # seconds between GPU usage checks
 
 
@@ -80,35 +114,8 @@ def monitor_and_schedule(commands):
 
 
 if __name__ == "__main__":
-    LRs = [
-        # "2e-05",
-        # "6e-05",
-        # "1e-04",
-        "5e-04",
-        # "1e-03",
-        # "2e-03",
-    ]
-    tasks = [
-        "IR/msmarco_pairs",
-        "QA/squad_v2",
-        "QA/squad",
-        "QA/record",
-        "SC/mnli_m",
-        "SC/sst2",
-        "SC/qqp",
-        "TC/conll2003_en",
-        "TC/ontonotes",
-        "TC/uner_en",
-        "IR/mldr_en_msmarco_pairs",
-        "IR/msmarco_msmarco_pairs",
-        "IR/nq_msmarco_pairs",
-        "LC/niah1",
-        "LC/niah2",
-    ]
-    seeds = list(range(5))
+    seeds = list(range(num_seeds))
     commands = []
-
-    model_name = "avey"
 
     for task in tasks:
         for lr in LRs:

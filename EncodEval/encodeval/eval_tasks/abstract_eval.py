@@ -1,6 +1,6 @@
 import os
-from dataclasses import dataclass
 import subprocess
+from dataclasses import dataclass
 from typing import Callable, Dict, Literal
 
 from sentence_transformers import SentenceTransformer
@@ -32,7 +32,7 @@ class EvalConfig:
     model_class: Callable = None
     model_kwargs: Dict = None
     tokenizer_class: Callable = None
-    tokenizer_kwargs: Dict = None  
+    tokenizer_kwargs: Dict = None
     tr_args_class: Callable = None
     tr_args_kwargs: Dict = None
     max_length: int = None
@@ -48,7 +48,7 @@ class EvalConfig:
         - Sets training/evaluation parameters
         - Configures dataset and loss function
         - Prepares output/logging directories
-        """      
+        """
         # Set random seed
         if "seed" in self.tr_args_kwargs:
             set_seed(self.tr_args_kwargs["seed"])
@@ -66,7 +66,7 @@ class EvalConfig:
                 self.model_kwargs["pretrained_model_name_or_path"] = ft_model_path
             elif "model_name_or_path" in self.model_kwargs:
                 self.model_kwargs["model_name_or_path"] = ft_model_path
-               
+
         # Load model
         if self.model_class.__name__ == "SentenceTransformer":
             self.model = self.model_class(**self.model_kwargs)
@@ -93,20 +93,29 @@ class EvalConfig:
 
         # Set and adjust maximum sequence length
         model_max_length = (
-            self.model[0].max_seq_length if isinstance(self.model, SentenceTransformer) 
+            self.model[0].max_seq_length
+            if isinstance(self.model, SentenceTransformer)
             else self.model.config.max_position_embeddings
         )
-        self.max_length = model_max_length if self.max_length is None else min(model_max_length, self.max_length)
+        self.max_length = (
+            model_max_length
+            if self.max_length is None
+            else min(model_max_length, self.max_length)
+        )
         self.max_length = round(0.99 * self.max_length)  # Apply 1% buffer
         print(f"Max sequence length set to {self.max_length}")
 
         # Sync special tokens from model config to tokenizer
         if hasattr(self.model, "config"):
             for attr in [
-                "bos_token", "bos_token_id", 
-                "eos_token", "eos_token_id", 
-                "pad_token", "pad_token_id", 
-                "mask_token", "mask_token_id"
+                "bos_token",
+                "bos_token_id",
+                "eos_token",
+                "eos_token_id",
+                "pad_token",
+                "pad_token_id",
+                "mask_token",
+                "mask_token_id",
             ]:
                 if hasattr(self.model.config, attr):
                     setattr(self.tokenizer, attr, getattr(self.model.config, attr))
@@ -130,18 +139,23 @@ class EvalConfig:
 
         # Adjust gradient accumulation if custom batch size is provided
         if train_batch_size is not None:
-            gradient_accumulation_steps = (
-                train_batch_size / (self.tr_args.n_gpu * self.tr_args.per_device_train_batch_size)
+            gradient_accumulation_steps = train_batch_size / (
+                self.tr_args.n_gpu * self.tr_args.per_device_train_batch_size
             )
             if gradient_accumulation_steps < 1:
                 self.tr_args.per_device_train_batch_size = int(
-                    gradient_accumulation_steps * self.tr_args.per_device_train_batch_size
+                    gradient_accumulation_steps
+                    * self.tr_args.per_device_train_batch_size
                 )
-            self.tr_args.gradient_accumulation_steps = max(1, int(gradient_accumulation_steps))
+            self.tr_args.gradient_accumulation_steps = max(
+                1, int(gradient_accumulation_steps)
+            )
 
         # Convert loss distance metric string to enum if applicable
         if self.loss_kwargs is not None:
-            if "distance_metric" in self.loss_kwargs and isinstance(self.loss_kwargs["distance_metric"], str):
+            if "distance_metric" in self.loss_kwargs and isinstance(
+                self.loss_kwargs["distance_metric"], str
+            ):
                 self.loss_kwargs["distance_metric"] = getattr(
                     TripletDistanceMetric, self.loss_kwargs["distance_metric"]
                 )
@@ -154,18 +168,21 @@ class EvalConfig:
             self.dataset_name = ""
 
         # Prepare output/log directories
-        model_name = os.environ["EVAL_MODEL_PATH"].split("/")[-1]
-        output_dir = self.tr_args.output_dir        
+        output_dir = os.environ["EVAL_MODEL_PATH"].split("/")[-1]
         output_subdir = (
             f"{self.task_type}/{self.dataset_name}/{ft_model_config_dir.replace('/', '_')}/{output_subdir}"
-            if ft_model_config_dir is not None else f"{self.task_type}/{self.dataset_name}/{output_subdir}"
+            if ft_model_config_dir is not None
+            else f"{self.task_type}/{self.dataset_name}/{output_subdir}"
         )
-        self.tr_args.output_dir = f"{os.environ['EVAL_MODEL_PATH']}/fine-tuned/{output_subdir}"
-        self.tr_args.logging_dir = f"{output_dir}/logs/{model_name}/{output_subdir}"
-        self.results_dir = f"{output_dir}/results/{model_name}/{output_subdir}"
+        self.tr_args.output_dir = f"{output_dir}/fine-tuned/{output_subdir}"
+        self.tr_args.logging_dir = f"{output_dir}/logs/{output_subdir}"
+        self.results_dir = f"{output_dir}/results/{output_subdir}"
 
         # Clear old logs if logging directory is not empty
-        if os.path.exists(self.tr_args.logging_dir) and len(os.listdir(self.tr_args.logging_dir)) > 0:
+        if (
+            os.path.exists(self.tr_args.logging_dir)
+            and len(os.listdir(self.tr_args.logging_dir)) > 0
+        ):
             subprocess.run(f"rm {self.tr_args.logging_dir}/*", shell=True, check=True)
 
 
