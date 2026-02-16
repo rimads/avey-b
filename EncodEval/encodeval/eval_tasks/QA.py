@@ -19,7 +19,7 @@ class QuestionAnsweringEval(AbstractEval):
             batched=True,
             load_from_cache_file=False,
             remove_columns=self.dataset["train"].column_names,
-            num_proc=4,
+            num_proc=1,
         )
 
         if self.tr_args.eval_strategy != "no":
@@ -28,7 +28,7 @@ class QuestionAnsweringEval(AbstractEval):
                 batched=True,
                 load_from_cache_file=False,
                 remove_columns=self.dataset["validation"].column_names,
-                num_proc=4,
+                num_proc=1,
             )
         else:
             val_dataset = None
