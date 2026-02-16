@@ -56,11 +56,14 @@ class EvalConfig:
         # Extract and remove device and dtype from model kwargs
         self.model_dtype = self.model_kwargs.pop("dtype")
         self.device = self.model_kwargs.pop("device")
+        output_dir = os.environ["EVAL_MODEL_PATH"].split("/")[-1]
 
         # Handle loading fine-tuned model from disk if specified
         ft_model_config_dir = self.model_kwargs.pop("ft_model_config_dir", None)
         if ft_model_config_dir is not None:
-            ft_model_path = f"{os.environ['EVAL_MODEL_PATH']}/fine-tuned/{self.task_type}/{ft_model_config_dir}"
+            ft_model_path = (
+                f"output_dir/fine-tuned/{self.task_type}/{ft_model_config_dir}"
+            )
             print(f"Loading fine-tuned model at {ft_model_path}")
             if "pretrained_model_name_or_path" in self.model_kwargs:
                 self.model_kwargs["pretrained_model_name_or_path"] = ft_model_path
@@ -168,7 +171,6 @@ class EvalConfig:
             self.dataset_name = ""
 
         # Prepare output/log directories
-        output_dir = os.environ["EVAL_MODEL_PATH"].split("/")[-1]
         output_subdir = (
             f"{self.task_type}/{self.dataset_name}/{ft_model_config_dir.replace('/', '_')}/{output_subdir}"
             if ft_model_config_dir is not None
