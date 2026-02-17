@@ -1,14 +1,12 @@
 # From https://github.com/facebookresearch/llama/blob/main/llama/model.py
 
+from typing import Optional
+
+import numpy as np
 import torch
 from torch import nn
-
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.nn.functional import scaled_dot_product_attention
-
-from typing import Optional
-import numpy as np
-
 from xformers.ops import SwiGLU
 
 try:
@@ -19,18 +17,18 @@ except ImportError:
     FLASH_ATTN_AVAILABLE = False
 
 from transformers import (
-    PreTrainedModel,
-    PretrainedConfig,
     DataCollatorForLanguageModeling,
+    PretrainedConfig,
+    PreTrainedModel,
 )
 from transformers.modeling_outputs import (
     BaseModelOutput,
     MaskedLMOutput,
     SequenceClassifierOutput,
-    TokenClassifierOutput
+    TokenClassifierOutput,
 )
 
-from .rotary import precompute_freqs_cis, apply_rotary_emb
+from .rotary import apply_rotary_emb, precompute_freqs_cis
 
 
 class DataCollatorWithPacking(DataCollatorForLanguageModeling):
@@ -99,6 +97,7 @@ class NeoBERTConfig(PretrainedConfig):
         self.vocab_size = vocab_size
         self.pad_token_id = pad_token_id
         self.max_length = max_length
+        self.max_position_embeddings = max_length
         self.kwargs = kwargs
 
 
@@ -111,14 +110,24 @@ class EncoderBlock(nn.Module):
         self.config = config
 
         # Attention
-        self.qkv = nn.Linear(in_features=config.hidden_size, out_features=config.hidden_size * 3, bias=False)
-        self.wo = nn.Linear(in_features=config.hidden_size, out_features=config.hidden_size, bias=False)
+        self.qkv = nn.Linear(
+            in_features=config.hidden_size,
+            out_features=config.hidden_size * 3,
+            bias=False,
+        )
+        self.wo = nn.Linear(
+            in_features=config.hidden_size, out_features=config.hidden_size, bias=False
+        )
 
         # Feedforward network
         multiple_of = 8
         intermediate_size = int(2 * config.intermediate_size / 3)
-        intermediate_size = multiple_of * ((intermediate_size + multiple_of - 1) // multiple_of)
-        self.ffn = SwiGLU(config.hidden_size, intermediate_size, config.hidden_size, bias=False)
+        intermediate_size = multiple_of * (
+            (intermediate_size + multiple_of - 1) // multiple_of
+        )
+        self.ffn = SwiGLU(
+            config.hidden_size, intermediate_size, config.hidden_size, bias=False
+        )
 
         # Layer norms
         self.attention_norm = nn.RMSNorm(config.hidden_size, config.norm_eps)
@@ -135,7 +144,12 @@ class EncoderBlock(nn.Module):
     ):
         # Attention
         attn_output, attn_weights = self._att_block(
-            self.attention_norm(x), attention_mask, freqs_cis, output_attentions, max_seqlen, cu_seqlens
+            self.attention_norm(x),
+            attention_mask,
+            freqs_cis,
+            output_attentions,
+            max_seqlen,
+            cu_seqlens,
         )
 
         # Residual
@@ -157,7 +171,16 @@ class EncoderBlock(nn.Module):
     ):
         batch_size, seq_len, _ = x.shape
 
-        xq, xk, xv = self.qkv(x).view(batch_size, seq_len, self.config.num_attention_heads, self.config.dim_head * 3).chunk(3, axis=-1)
+        xq, xk, xv = (
+            self.qkv(x)
+            .view(
+                batch_size,
+                seq_len,
+                self.config.num_attention_heads,
+                self.config.dim_head * 3,
+            )
+            .chunk(3, axis=-1)
+        )
 
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis)
 
@@ -179,7 +202,9 @@ class EncoderBlock(nn.Module):
             )
         # Eager attention if attention weights are needed in the output
         elif output_attentions:
-            attn_weights = xq.permute(0, 2, 1, 3) @ xk.permute(0, 2, 3, 1) / (xq.size(-1) ** 0.5)
+            attn_weights = (
+                xq.permute(0, 2, 1, 3) @ xk.permute(0, 2, 3, 1) / (xq.size(-1) ** 0.5)
+            )
             if attention_mask is not None:
                 attn_weights = attn_weights * attention_mask
             attn_weights = attn_weights.softmax(-1)
@@ -195,7 +220,13 @@ class EncoderBlock(nn.Module):
                 dropout_p=0,
             ).transpose(1, 2)
 
-        return self.wo(attn.reshape(batch_size, seq_len, self.config.num_attention_heads * self.config.dim_head)), attn_weights
+        return self.wo(
+            attn.reshape(
+                batch_size,
+                seq_len,
+                self.config.num_attention_heads * self.config.dim_head,
+            )
+        ), attn_weights
 
 
 class NeoBERTPreTrainedModel(PreTrainedModel):
@@ -205,9 +236,13 @@ class NeoBERTPreTrainedModel(PreTrainedModel):
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
-            module.weight.data.uniform_(-self.config.decoder_init_range, self.config.decoder_init_range)
+            module.weight.data.uniform_(
+                -self.config.decoder_init_range, self.config.decoder_init_range
+            )
         elif isinstance(module, nn.Embedding):
-            module.weight.data.uniform_(-self.config.embedding_init_range, self.config.embedding_init_range)
+            module.weight.data.uniform_(
+                -self.config.embedding_init_range, self.config.embedding_init_range
+            )
 
 
 class NeoBERT(NeoBERTPreTrainedModel):
@@ -218,10 +253,14 @@ class NeoBERT(NeoBERTPreTrainedModel):
 
         self.config = config
 
-        self.encoder = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+        self.encoder = nn.Embedding(
+            config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id
+        )
 
         # Ensures freqs_cis is moved to the same devices as the model. Non-persistent buffers are not saved in the state_dict.
-        freqs_cis = precompute_freqs_cis(config.hidden_size // config.num_attention_heads, config.max_length)
+        freqs_cis = precompute_freqs_cis(
+            config.hidden_size // config.num_attention_heads, config.max_length
+        )
         self.register_buffer("freqs_cis", freqs_cis, persistent=False)
 
         self.transformer_encoder = nn.ModuleList()
@@ -249,31 +288,45 @@ class NeoBERT(NeoBERTPreTrainedModel):
         hidden_states, attentions = [], []
 
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
+            raise ValueError(
+                "You must specify exactly one of input_ids or inputs_embeds"
+            )
 
         # Expand and repeat: (Batch, Length) -> (Batch, Heads, Length, Length)
         if attention_mask is not None:
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).repeat(1, self.config.num_attention_heads, attention_mask.size(-1), 1)
+            attention_mask = (
+                attention_mask.unsqueeze(1)
+                .unsqueeze(1)
+                .repeat(1, self.config.num_attention_heads, attention_mask.size(-1), 1)
+            )
 
         # Checks to be done if inputs are packed sequences
         if cu_seqlens is not None:
-            assert (
-                FLASH_ATTN_AVAILABLE
-            ), "Flash-attention is not available. Please ''pip install flash_attn'', or provide un-packed sequences."
-            assert not output_attentions, "Output attentions is not supported when sequences are packed."
-            assert max_seqlen is not None, "Missing max_seqlen. It must be provided when cu_seqlens are not None."
+            assert FLASH_ATTN_AVAILABLE, (
+                "Flash-attention is not available. Please ''pip install flash_attn'', or provide un-packed sequences."
+            )
+            assert not output_attentions, (
+                "Output attentions is not supported when sequences are packed."
+            )
+            assert max_seqlen is not None, (
+                "Missing max_seqlen. It must be provided when cu_seqlens are not None."
+            )
             assert (input_ids if input_ids is not None else inputs_embeds).shape[
                 0
-            ] == 1, "Cumulative sequence lengths are provided but inputs are not packed."
-            assert (
-                input_ids if input_ids is not None else inputs_embeds
-            ).is_cuda, "Packing uses an implementation of flash-attention and is only supported on GPU."
+            ] == 1, (
+                "Cumulative sequence lengths are provided but inputs are not packed."
+            )
+            assert (input_ids if input_ids is not None else inputs_embeds).is_cuda, (
+                "Packing uses an implementation of flash-attention and is only supported on GPU."
+            )
 
         # RoPE
         freqs_cis = (
             self.freqs_cis[position_ids]
             if position_ids is not None
-            else self.freqs_cis[: (input_ids if input_ids is not None else inputs_embeds).shape[1]].unsqueeze(0)
+            else self.freqs_cis[
+                : (input_ids if input_ids is not None else inputs_embeds).shape[1]
+            ].unsqueeze(0)
         )
 
         # Embedding
@@ -281,7 +334,9 @@ class NeoBERT(NeoBERTPreTrainedModel):
 
         # Transformer encoder
         for layer in self.transformer_encoder:
-            x, attn = layer(x, attention_mask, freqs_cis, output_attentions, max_seqlen, cu_seqlens)
+            x, attn = layer(
+                x, attention_mask, freqs_cis, output_attentions, max_seqlen, cu_seqlens
+            )
             if output_hidden_states:
                 hidden_states.append(x)
             if output_attentions:
@@ -379,7 +434,9 @@ class NeoBERTForSequenceClassification(NeoBERTPreTrainedModel):
         labels: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
     ):
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         output = self.model.forward(
             input_ids=input_ids,
@@ -405,7 +462,9 @@ class NeoBERTForSequenceClassification(NeoBERTPreTrainedModel):
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                elif self.num_labels > 1 and (
+                    labels.dtype == torch.long or labels.dtype == torch.int
+                ):
                     self.config.problem_type = "single_label_classification"
                 else:
                     self.config.problem_type = "multi_label_classification"
@@ -473,7 +532,9 @@ class NeoBERTForTokenClassification(NeoBERTPreTrainedModel):
         labels: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
     ):
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         output = self.model.forward(
             input_ids=input_ids,

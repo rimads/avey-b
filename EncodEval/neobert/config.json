@@ -1,0 +1,32 @@
+{
+  "architectures": ["NeoBERTLMHead"],
+  "auto_map": {
+    "AutoConfig": "model.NeoBERTConfig",
+    "AutoModel": "model.NeoBERT",
+    "AutoModelForMaskedLM": "model.NeoBERTLMHead",
+    "AutoModelForSequenceClassification": "model.NeoBERTForSequenceClassification",
+    "AutoModelForTokenClassification": "model.NeoBERTForTokenClassification"
+  },
+  "classifier_init_range": 0.02,
+  "decoder_init_range": 0.02,
+  "dim_head": 64,
+  "embedding_init_range": 0.02,
+  "hidden_size": 768,
+  "intermediate_size": 3072,
+  "kwargs": {
+    "classifier_init_range": 0.02,
+    "pretrained_model_name_or_path": "google-bert/bert-base-uncased",
+    "trust_remote_code": true
+  },
+  "max_length": 4096,
+  "model_type": "neobert",
+  "norm_eps": 1e-5,
+  "num_attention_heads": 12,
+  "num_hidden_layers": 28,
+  "pad_token_id": 0,
+  "pretrained_model_name_or_path": "google-bert/bert-base-uncased",
+  "torch_dtype": "float32",
+  "transformers_version": "4.48.2",
+  "trust_remote_code": true,
+  "vocab_size": 30522
+}
