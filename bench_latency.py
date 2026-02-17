@@ -19,10 +19,12 @@ except ImportError:
     print("---->NOT using flash attn")
 
 ctxt_len = 98304
+
+# format: (model name, context length for this model to test)
 MODEL_NAMES = [
     ("chandar-lab/NeoBERT", ctxt_len),
     ("answerdotai/ModernBERT-base", ctxt_len),
-    ("avey", ctxt_len),
+    ("avey-ai/avey-b1-base-exp", ctxt_len),
 ]
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
