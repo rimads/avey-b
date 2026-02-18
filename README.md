@@ -1,9 +1,9 @@
 # Avey-B
 
-[![Paper](https://img.shields.io/badge/Paper-ICLR_2026-b31b1b)](placeholder_link)
-[![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-yellow)](placeholder_link)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![Paper](https://img.shields.io/badge/Paper-ICLR_2026-b31b1b)](https://arxiv.org/abs/2602.15814)
+[![HuggingFace](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-yellow)](https://huggingface.co/collections/avey-ai/avey-b1-experimental)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 
 This repository contains the official implementation, pretraining code, and evaluation scripts for **Avey-B**, as presented in the paper **"Avey-B"** (ICLR 2026).
 
@@ -17,7 +17,7 @@ This repository contains the official implementation, pretraining code, and eval
 .
 ├── avey_b/              # Core implementation of the Avey-B model architecture
 ├── EncodEval/           # Evaluation framework (SC, TC, QA, IR benchmarks)
-├── EncodEval/neobert/             # Custom implementations for NeoBERT baseline comparisons
+├── EncodEval/neobert/   # Custom implementations for NeoBERT baseline comparisons
 ├── bench_latency.py     # Script for benchmarking inference latency
 ├── bench_throughput.py  # Script for benchmarking training/inference throughput
 ├── setup.sh             # Environment setup script
@@ -30,7 +30,13 @@ This repository contains the official implementation, pretraining code, and eval
 
 The codebase is tested on Ubuntu 22.04 using NVIDIA A100 and H100 GPUs. Python environments are managed using `uv` for strict reproducibility.
 
-1.  **Initialize Environment:**
+1.  **clone the repo**
+    ```bash
+    git clone https://github.com/rimads/avey-b
+    cd avey-b
+    ```
+
+2.  **Initialize Environment:**
     The provided `setup.sh` script installs system dependencies (including `awscli`), installs `uv`, and syncs the Python environment defined in `pyproject.toml`.
     ```bash
     bash setup.sh
@@ -45,9 +51,12 @@ The codebase is tested on Ubuntu 22.04 using NVIDIA A100 and H100 GPUs. Python e
 
 ## Pre-training
 
-We provide scripts to pretrain Avey-B from scratch using the Masked Language Modeling (MLM) objective.
+We provide scripts to pretrain Avey-B from scratch using the Masked Language Modeling (MLM) objective. Note that running pre-training will download the dataset specified in `dataloader.py` (sample-10BT from HuggingFaceFW/fineweb by default).
 
-1.  **Configuration:** Adjust model hyperparameters inside `train_mlm.py` (approx. line 242) if needed.
+1. **Configuration:**
+    * Either login to wandb with `wandb login` or disable it `wandb disabled`
+    * It is recommended to login to hf with `hf auth login`, to prevent rate limit errors while downloading the datasets
+2. **Model Config:** Adjust model hyperparameters inside `train_mlm.py` (approx. line 242) if needed.
 2.  **Launch Training:**
     Use `train.sh` to automatically detect available GPUs and launch the training run. You can control the per-device batch size via environment variables.
 
@@ -66,24 +75,33 @@ We provide scripts to pretrain Avey-B from scratch using the Masked Language Mod
 Our evaluation framework is adapted from [EncodEval](https://github.com/hgissbkh/EncodEval/tree/MLM_vs_CLM).
 
 ### 1. Preparation
+Navigate to the `EncodEval` directory (`cd EncodEval`) to run evals.
 If you intend to run long-range Needle-In-A-Haystack (NIAH) benchmarks:
 ```bash
 python gen_niah.py
 ```
 
 ### Running Benchmarks
-1.  Navigate to the `EncodEval` directory (`cd EncodEval`).
-2.  Open `EncodEval/run.py` and specify:
+1.  Open `EncodEval/run.py` and specify:
     *   `model_name`: Local path or HuggingFace ID (e.g., `google-bert/bert-base-uncased`).
     *   `learning_rates`: List of LRs to sweep.
     *   Benchmarks and random seeds.
-3.  Ensure YAML configurations for your chosen benchmarks, learning rate, and seeds exist in `EncodEval/configs` (configs for specified values in `run.py` are already provided).
-4.  Run the evaluation:
+2.  Ensure YAML configurations for your chosen benchmarks, learning rate, and seeds exist in `EncodEval/configs` (configs for specified values in `run.py` are already provided).
+3.  Run the evaluation:
+
     ```bash
-    # cd EncodEval, if not already in the directory
     python run.py
     ```
-`run.py` will automatically schedule the benchmarks to run on all GPUs on the machine as they become available.
+
+    `run.py` will automatically schedule the benchmarks to run on all GPUs on the machine as they become available.
+4. Print results by running
+
+    ```bash
+    python print_results.py
+    ```
+
+    Model name and learning rates will need to be specified inside `print_results.sh`. The script will print results in a format that can be pasted into Google Sheets.
+
 
 ### NeoBERT Specifics
 If evaluating NeoBERT, specific token classification implementations are required:
@@ -108,7 +126,7 @@ python bench_latency.py
 To run the unoptimized version of Avey-B, the `@torch.compile` decorator can be removed from the implementation. To test the optimized versions of the other models, flash-attention will need to be installed.
 
 **Note on NeoBERT Efficiency Testing:**
-To test NeoBERT beyond its training window (solely for efficiency/OOM measurements), you must manually override its config:
+To test NeoBERT beyond its training window (solely for efficiency measurements), you must manually override its config:
 1.  Download the [NeoBERT checkpoint](https://huggingface.co/chandar-lab/NeoBERT).
 2.  Modify `config.json`: Set `max_length` to a large value (e.g., 100000).
 3.  Update the benchmarking scripts to point to this modified local checkpoint.
@@ -120,10 +138,11 @@ To test NeoBERT beyond its training window (solely for efficiency/OOM measuremen
 If you use Avey-B or this codebase in your research, please cite our paper:
 
 ```bibtex
-@inproceedings{acharya2026aveyb,
+@inproceedings{2026aveyb,
   title={Avey-B},
   author={Acharya, Devang and Hammoud, Mohammad},
-  booktitle={Published as a conference paper at ICLR 2026},
-  year={2026}
+  booktitle={The Fourteenth International Conference on Learning Representations},
+  year={2026},
+  url={https://openreview.net/forum?id=kQ9j5RY8ff}
 }
 ```
