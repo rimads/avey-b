@@ -142,7 +142,6 @@ If you use Avey-B or this codebase in your research, please cite our paper:
   title={Avey-B},
   author={Acharya, Devang and Hammoud, Mohammad},
   booktitle={The Fourteenth International Conference on Learning Representations},
-  year={2026},
-  url={https://openreview.net/forum?id=kQ9j5RY8ff}
+  year={2026}
 }
 ```
