@@ -70,7 +70,7 @@ We provide scripts to pretrain Avey-B from scratch using the Masked Language Mod
 
 ---
 
-## 📊 Evaluation
+## Evaluation
 
 Our evaluation framework is adapted from [EncodEval](https://github.com/hgissbkh/EncodEval/tree/MLM_vs_CLM).
 
