@@ -1,6 +1,6 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import (
@@ -13,72 +13,63 @@ from transformers.modeling_outputs import (
 from .configuration_avey import AveyConfig
 
 
-class Contextualizer(nn.Module):
-    def __init__(self, config: AveyConfig, layer_idx):
+class StaticLayer(nn.Module):
+    def __init__(self, config: AveyConfig):
         super().__init__()
-        self.eps = config.eps
-        self.layer_idx = layer_idx
-        if self.layer_idx % 2 == 0:
-            self.spatial_proj = nn.Parameter(
-                torch.empty(config.chunk_size, config.chunk_size)
-            )
-            nn.init.xavier_normal_(self.spatial_proj)
+        self.norm = nn.RMSNorm(config.d_embed, eps=config.eps)
+        self.enricher = nn.Linear(config.d_embed, config.d_embed * 4)
 
-    def cosim(self, embeddings: torch.Tensor) -> torch.Tensor:
-        norm = torch.sqrt(torch.sum(embeddings**2, dim=-1, keepdim=True) + self.eps)
-        normalized = embeddings / norm
-        cosim = torch.matmul(normalized, normalized.transpose(-1, -2))
-        return cosim
+        proj_size = config.chunk_size
+        self.spatial_proj = nn.Parameter(torch.empty(proj_size, proj_size))
+        nn.init.xavier_normal_(self.spatial_proj)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        _, T, _ = x.shape
-        x0, x1 = x.chunk(2, dim=-1)
-        if self.layer_idx % 2 == 0:
-            x0 = self.spatial_proj[:T, :T] @ x0
-        else:
-            sim_scores = self.cosim(x0)
-            row_sums = sim_scores.sum(dim=-1, keepdim=True)
-            sim_scores = sim_scores / (row_sums + self.eps)
-            x0 = sim_scores @ x0
-        output = x0 * x1
-        return output
-
-
-class ContextualizerLayer(nn.Module):
-    def __init__(self, config: AveyConfig, layer_idx):
-        super().__init__()
-        expanded_dim = config.d_embed * config.expansion_factor
-        self.split_factor = [
-            int(expanded_dim * config.context_proportion),
-            int(expanded_dim * (1 - config.context_proportion)),
-        ]
-        diff = expanded_dim - (self.split_factor[0] + self.split_factor[1])
-        self.split_factor[1] += diff
-        if self.split_factor[0] % 2 != 0:
-            self.split_factor[0] += 1
-            self.split_factor[1] -= 1
-
-        self.enricher = nn.Linear(config.d_embed, expanded_dim)
-        self.contextualizer = Contextualizer(config, layer_idx)
-        proj_in_features = int(self.split_factor[0] / 2 + self.split_factor[1])
-        self.fuser = nn.Linear(proj_in_features, config.d_embed)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_proj = F.relu(self.enricher(x)).square()
-        x0, x1 = x_proj.split(self.split_factor, dim=-1)
-        x0 = self.contextualizer(x0)
-        return self.fuser(torch.cat([x0, x1], dim=-1))
-
-
-class AveyLayer(nn.Module):
-    def __init__(self, config: AveyConfig, layer_idx):
-        super().__init__()
-        self.rms_norm = nn.RMSNorm(config.d_embed, eps=config.eps)
-        self.ctxt = ContextualizerLayer(config, layer_idx)
+        self.fuser = nn.Linear(int(config.d_embed * 3), config.d_embed)
+        self.alpha = nn.Parameter(torch.tensor(1.0))
 
     @torch.compile
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.ctxt(self.rms_norm(x))
+    def forward(self, x):
+        _, T, _ = x.shape
+        res = x
+        x = self.norm(x)
+        x = self.enricher(x)
+        x = F.gelu(x)
+        x, bypass = x.chunk(2, dim=-1)
+
+        x, gate = x.chunk(2, dim=-1)
+        x = self.spatial_proj[:T, :T] @ x
+        x = gate * x
+
+        x = torch.cat([x, bypass], dim=-1)
+        x = self.fuser(x)
+        return x + (self.alpha * res)
+
+
+class DynamicLayer(nn.Module):
+    def __init__(self, config: AveyConfig):
+        super().__init__()
+        self.norm = nn.RMSNorm(config.d_embed, eps=config.eps)
+        self.enricher = nn.Linear(config.d_embed, config.d_embed * 4)
+        self.fuser = nn.Linear(config.d_embed * 3, config.d_embed)
+        self.alpha = nn.Parameter(torch.tensor(1.0))
+
+    @torch.compile
+    def forward(self, x):
+        _, T, _ = x.shape
+        res = x
+        x = self.norm(x)
+        x = self.enricher(x)
+        x = F.gelu(x)
+        x, bypass = x.chunk(2, dim=-1)
+
+        x, gate = x.chunk(2, dim=-1)
+        x_norm = F.normalize(x, p=2, dim=-1)
+        sim_scores = x_norm @ x_norm.mT
+        x = F.normalize(sim_scores, p=1, dim=-1) @ x
+        x = gate * x
+
+        x = torch.cat([x, bypass], dim=-1)
+        x = self.fuser(x)
+        return x + (self.alpha * res)
 
 
 class Ranker(nn.Module):
@@ -127,12 +118,7 @@ class Ranker(nn.Module):
         ext = (self.down_proj @ ext) + x_chunks
         h = ext.view(B * N, cs, E)
 
-        state = {
-            "B": B,
-            "N": N,
-            "orig_T": orig_T,
-            "padded": padded,
-        }
+        state = {"B": B, "N": N, "orig_T": orig_T, "padded": padded}
         return h, state
 
     def contract(self, h, st):
@@ -193,9 +179,6 @@ class Ranker(nn.Module):
 class AveyPreTrainedModel(PreTrainedModel):
     config_class = AveyConfig
 
-    def __init__(self, *inputs, **kwargs):
-        super().__init__(*inputs, **kwargs)
-
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             nn.init.xavier_normal_(module.weight)
@@ -208,77 +191,54 @@ class AveyPreTrainedModel(PreTrainedModel):
 
 
 class AveyModel(AveyPreTrainedModel):
-    def __init__(self, config: AveyConfig):
+    def __init__(self, config):
         super().__init__(config)
-        self.config = config
-        self.embeddings = nn.Embedding(config.vocab_size, config.d_embed)
+        self.chunk_size = config.chunk_size
+        self.embed = nn.Embedding(config.vocab_size, config.d_embed)
         self.layers = nn.ModuleList(
-            [AveyLayer(config, i) for i in range(config.n_layers)]
+            [
+                DynamicLayer(config) if (i + 1) % 2 == 0 else StaticLayer(config)
+                for i in range(config.n_layers)
+            ]
         )
         self.ranker = Ranker(config)
-        self.post_init()
+        self.apply(self._init_weights)
 
-    def forward(self, input_ids: torch.Tensor, attention_mask=None, **kwargs):
-        h = self.embeddings(input_ids)
-        if attention_mask is not None:
-            h = h * attention_mask.unsqueeze(-1)
-
-        B, T, E = h.shape
-        padded = False
-        orig_T = T
-        if T % self.config.chunk_size != 0:
-            pad_len = self.config.chunk_size - (T % self.config.chunk_size)
-            pad_tensor = torch.zeros(B, pad_len, E, device=h.device, dtype=h.dtype)
-            h = torch.cat([h, pad_tensor], dim=1)
-            T = h.shape[1]
-            padded = True
-
-        h, state = self.ranker.preprocess(h)
+    def _get_hidden(self, input_ids):
+        x = self.embed(input_ids)
+        x, state = self.ranker.preprocess(x)
         for layer in self.layers:
-            h = layer(h)
-        h = self.ranker.contract(h, state)
+            x = layer(x)
+        x = self.ranker.contract(x, state)
+        return x
 
-        if padded:
-            h = h[:, :orig_T, :]
+    def forward(self, input_ids, **kwargs):
+        x = self._get_hidden(input_ids)
+        return BaseModelOutput(last_hidden_state=x)
 
-        return BaseModelOutput(last_hidden_state=h)
 
-
-class AveyForMaskedLM(AveyPreTrainedModel):
-    def __init__(self, config: AveyConfig):
+class AveyForMaskedLM(AveyModel):
+    def __init__(self, config):
         super().__init__(config)
-        self.config = config
+        self.apply(self._init_weights)
 
-        self.base_avey_model = AveyModel(config)
-        self.ln_f = nn.RMSNorm(config.d_embed, eps=config.eps)
+    def forward(self, input_ids, labels=None, **kwargs):
+        x = self._get_hidden(input_ids)
+        logits = F.linear(x, self.embed.weight)
 
-        self.post_init()
-
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, **kwargs):
-        h = self.base_avey_model(input_ids, **kwargs).last_hidden_state
-        logits = F.linear(self.ln_f(h), self.base_avey_model.embeddings.weight)
-
+        loss = None
         if labels is not None:
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)), labels.view(-1), ignore_index=-100
             )
-            return MaskedLMOutput(logits=logits, loss=loss)
 
-        return MaskedLMOutput(logits=logits)
+        return MaskedLMOutput(logits=logits, loss=loss)
 
 
-class AveyForSequenceClassification(AveyPreTrainedModel):
-    def __init__(self, config: AveyConfig, avey_model: AveyForMaskedLM = None):
+class AveyForSequenceClassification(AveyModel):
+    def __init__(self, config):
         super().__init__(config)
-        self.config = config
         self.num_labels = config.num_labels
-
-        if avey_model is None:
-            self.avey_model = AveyForMaskedLM(config)
-        else:
-            self.avey_model = avey_model
-
-        self.classifier = nn.Linear(config.d_embed, config.num_labels)
         self.dense = nn.Sequential(
             nn.Linear(self.config.d_embed, self.config.d_embed * 2),
             nn.GELU(),
@@ -286,108 +246,44 @@ class AveyForSequenceClassification(AveyPreTrainedModel):
             nn.GELU(),
             nn.Linear(self.config.d_embed * 2, self.config.d_embed),
         )
-        self.post_init()
+        self.classifier = nn.Linear(config.d_embed, config.num_labels)
+        self.apply(self._init_weights)
 
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, **kwargs):
-        h = self.avey_model.base_avey_model(input_ids, **kwargs).last_hidden_state
-        h = h.mean(dim=1)
-        h = self.avey_model.ln_f(h)
-        h = self.dense(h)
-        h = F.gelu(h)
-        logits = self.classifier(h)
+    def forward(self, input_ids, labels=None, **kwargs):
+        x = self._get_hidden(input_ids)
+        x = x.mean(dim=1)
+        x = self.dense(x)
+        logits = self.classifier(x)
+
         loss = None
-
         if labels is not None:
-            if self.config.problem_type is None:
-                if self.num_labels == 1:
-                    self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (
-                    labels.dtype == torch.long or labels.dtype == torch.int
-                ):
-                    self.config.problem_type = "single_label_classification"
-                else:
-                    self.config.problem_type = "multi_label_classification"
-
-            if self.config.problem_type == "regression":
-                loss_fct = MSELoss()
-                if self.num_labels == 1:
-                    loss = loss_fct(logits.squeeze(), labels.squeeze())
-                else:
-                    loss = loss_fct(logits, labels)
-            elif self.config.problem_type == "single_label_classification":
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            elif self.config.problem_type == "multi_label_classification":
-                loss_fct = BCEWithLogitsLoss()
-                loss = loss_fct(logits, labels)
+            if self.num_labels == 1:
+                loss = MSELoss()(logits.squeeze(), labels.squeeze())
+            elif labels.dtype in (torch.long, torch.int):
+                loss = CrossEntropyLoss()(
+                    logits.view(-1, self.num_labels), labels.view(-1)
+                )
+            else:
+                loss = BCEWithLogitsLoss()(logits, labels)
 
         return SequenceClassifierOutput(logits=logits, loss=loss)
 
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, *model_args, **kwargs):
-        config = kwargs.pop("config", None)
-        if config is None:
-            config = AveyConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
 
-        archs = getattr(config, "architectures", [])
-        is_mlm = any("MaskedLM" in a for a in archs)
-
-        if is_mlm:
-            mlm_model = AveyForMaskedLM.from_pretrained(
-                pretrained_model_name_or_path, **kwargs
-            )
-            return cls(config, avey_model=mlm_model)
-        else:
-            return super().from_pretrained(
-                pretrained_model_name_or_path, *model_args, config=config, **kwargs
-            )
-
-
-class AveyForTokenClassification(AveyPreTrainedModel):
-    def __init__(self, config: AveyConfig, avey_model: AveyForMaskedLM = None):
+class AveyForTokenClassification(AveyModel):
+    def __init__(self, config):
         super().__init__(config)
-        self.config = config
         self.num_labels = config.num_labels
-
-        if avey_model is None:
-            self.avey_model = AveyForMaskedLM(config)
-        else:
-            self.avey_model = avey_model
-
-        self.classifier = nn.Linear(config.d_embed, config.num_labels)
         self.dense = nn.Sequential(nn.Linear(config.d_embed, config.d_embed), nn.Tanh())
-        self.post_init()
+        self.classifier = nn.Linear(config.d_embed, config.num_labels)
+        self.apply(self._init_weights)
 
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, **kwargs):
-        outputs = self.avey_model.base_avey_model(input_ids, **kwargs)
+    def forward(self, input_ids, labels=None, **kwargs):
+        x = self._get_hidden(input_ids)
+        x = self.dense(x)
+        logits = self.classifier(x)
 
-        h = outputs.last_hidden_state
-        h = self.avey_model.ln_f(h)
-        h = self.dense(h)
-        logits = self.classifier(h)
         loss = None
-
         if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            loss = CrossEntropyLoss()(logits.view(-1, self.num_labels), labels.view(-1))
 
-        return TokenClassifierOutput(loss=loss, logits=logits)
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, *model_args, **kwargs):
-        config = kwargs.pop("config", None)
-        if config is None:
-            config = AveyConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
-
-        archs = getattr(config, "architectures", [])
-        is_mlm = any("MaskedLM" in a for a in archs)
-
-        if is_mlm:
-            mlm_model = AveyForMaskedLM.from_pretrained(
-                pretrained_model_name_or_path, **kwargs
-            )
-            return cls(config, avey_model=mlm_model)
-        else:
-            return super().from_pretrained(
-                pretrained_model_name_or_path, *model_args, config=config, **kwargs
-            )
+        return TokenClassifierOutput(logits=logits, loss=loss)
