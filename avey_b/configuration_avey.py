@@ -10,6 +10,8 @@ class AveyConfig(PretrainedConfig):
         context_len: int = 512,
         d_embed: int = 768,
         n_layers: int = 26,
+        expansion_factor: int = 4,
+        context_proportion: float = 0.5,
         chunk_size: int = 128,
         k: int = 3,
         eps=1e-12,
@@ -18,6 +20,8 @@ class AveyConfig(PretrainedConfig):
         self.vocab_size = vocab_size
         self.d_embed = d_embed
         self.n_layers = n_layers
+        self.expansion_factor = expansion_factor
+        self.context_proportion = context_proportion
         self.chunk_size = chunk_size
         self.k = k
         self.eps = eps

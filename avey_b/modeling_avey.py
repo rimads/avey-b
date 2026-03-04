@@ -29,6 +29,10 @@ class StaticLayer(nn.Module):
     @torch.compile
     def forward(self, x):
         _, T, _ = x.shape
+        assert T <= self.spatial_proj.size(0), (
+            "StaticLayer expects the per-split sequence length T to be <= chunk_size "
+            "(spatial_proj is sized [chunk_size, chunk_size])."
+        )
         res = x
         x = self.norm(x)
         x = self.enricher(x)
@@ -213,6 +217,8 @@ class AveyModel(AveyPreTrainedModel):
         return x
 
     def forward(self, input_ids, **kwargs):
+        # NOTE: We currently ignore attention_mask/position_ids and other common HF kwargs.
+        # This means padding tokens are treated as normal tokens unless you pre-trim inputs.
         x = self._get_hidden(input_ids)
         return BaseModelOutput(last_hidden_state=x)
 
@@ -220,7 +226,8 @@ class AveyModel(AveyPreTrainedModel):
 class AveyForMaskedLM(AveyModel):
     def __init__(self, config):
         super().__init__(config)
-        self.apply(self._init_weights)
+        # FIX: AveyModel already calls apply(_init_weights) in its __init__.
+        # Re-initializing here would unnecessarily reset weights and can break reproducibility.
 
     def forward(self, input_ids, labels=None, **kwargs):
         x = self._get_hidden(input_ids)
